@@ -1,0 +1,44 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
+  "version": "1.0.0",
+  "id": "${{BOT_ID}}",
+  "developer": {
+    "name": "Unifi Aviation, LLC",
+    "websiteUrl": "https://www.unifiservice.com",
+    "privacyUrl": "https://www.unifiservice.com",
+    "termsOfUseUrl": "https://www.unifiservice.com"
+  },
+  "name": {
+    "short": "NDA Reviewer",
+    "full": "Unifi M&A NDA Reviewer"
+  },
+  "description": {
+    "short": "Redlines buy-side M&A NDAs against the Unifi playbook.",
+    "full": "Upload an NDA (.docx) in a chat with this bot. It reviews the agreement against the Unifi M&A (buy-side) NDA playbook and returns a Word redline with tracked changes and playbook comments, plus a summary and action items."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#11345E",
+  "bots": [
+    {
+      "botId": "${{BOT_ID}}",
+      "scopes": ["personal"],
+      "supportsFiles": true,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            { "title": "help", "description": "How to use the NDA reviewer" },
+            { "title": "second turn", "description": "Attach the counterparty's response to apply second-turn fallbacks" }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": []
+}
