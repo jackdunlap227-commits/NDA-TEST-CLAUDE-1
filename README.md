@@ -5,7 +5,7 @@ Word redline.
 
 1. In a 1:1 chat with the bot, attach the NDA (`.docx`) and press send. You can add notes in the
    same message, for example `second turn` or `Target is Acme Corp`.
-2. Claude reads the NDA clause by clause against every playbook rule
+2. The AI model (OpenAI GPT-5.2 or Claude) reads the NDA clause by clause against every playbook rule
    ([`playbooks/Unifi - MA NDA Playbook.docx`](playbooks/)).
 3. The bot replies with a summary and action items (such as "clear with Jessica" or "clear with
    the business") and a file card. Click **Allow** and the redlined `.docx` is saved to the chat.
@@ -23,7 +23,7 @@ Teams ──file──▶ app.py (/api/messages, M365 Agents SDK)
                    ▼
               nda_agent/pipeline.py
                    ├─ redline.py   number every paragraph [p0], [p1] … (skips text already deleted)
-                   ├─ reviewer.py  Claude + playbook (prompt-cached) → JSON edits
+                   ├─ reviewer.py  GPT-5.2 or Claude + playbook → JSON edits
                    │                {paragraph, replace|insert|insert_paragraph_after, text, rule, comment}
                    └─ redline.py   apply each edit as <w:del>/<w:ins> + comment, turn on Track Changes
                    ▼
@@ -46,29 +46,38 @@ Teams ◀── summary + file consent card ──▶ upload the redline to the 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env            # set ANTHROPIC_FOUNDRY_RESOURCE (and `az login`) or ANTHROPIC_API_KEY
+cp .env.example .env            # pick a model option (see below), then `az login` if on Azure
 python samples/make_sample_nda.py
 python -m nda_agent.cli "samples/Sample Target NDA.docx"            # first turn
 python -m nda_agent.cli their-markup.docx --turn second --note "Target is Acme"
 pytest                                                              # tests run offline
 ```
 
-## Claude access: Microsoft Foundry or the Claude API
+## Choosing the AI model
 
-The bot can call Claude in either of two ways. It picks one automatically from the settings.
+The review step works with **OpenAI GPT-5.2** or **Claude**. `NDA_PROVIDER` picks one; if it's
+unset, OpenAI is used whenever `AZURE_OPENAI_ENDPOINT` or `OPENAI_API_KEY` is set. Both use the
+same prompt, playbook and JSON output format (`nda_agent/reviewer.py`), so the redlines look the
+same either way.
 
-* **Microsoft Foundry** (billed through Azure): deploy Claude Opus 5.5 from the Foundry model
-  catalog, set `ANTHROPIC_FOUNDRY_RESOURCE` to the resource name, and set `NDA_MODEL` to the
-  deployment name. Then authenticate one of two ways:
-  * **No key (recommended):** the app signs in with Microsoft Entra ID. In Azure that's the
-    Container App's managed identity; on your computer it's `az login`. The identity needs the
-    **Cognitive Services User** (or **Foundry User**) role on the Foundry resource.
-  * **Key:** set `ANTHROPIC_FOUNDRY_API_KEY` to the key from the deployment's *Details* tab.
-* **Claude API:** set `ANTHROPIC_API_KEY` (from console.anthropic.com) and leave the Foundry
-  settings unset.
+| Option | Settings |
+|---|---|
+| **GPT-5.2 on Azure** (Microsoft Foundry / Azure OpenAI) | `NDA_PROVIDER=openai`, `AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com`, `NDA_MODEL=<deployment name>` |
+| GPT-5.2 from OpenAI directly | `NDA_PROVIDER=openai`, `OPENAI_API_KEY` |
+| Claude in Microsoft Foundry | `NDA_PROVIDER=anthropic`, `ANTHROPIC_FOUNDRY_RESOURCE`, `NDA_MODEL=<deployment name>` |
+| Claude API | `NDA_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` |
 
-Foundry doesn't support the server-side retry on another model when Claude declines a request,
-so the bot leaves that off on Foundry. Everything else behaves the same.
+On Azure (either model), leave the key setting unset and the app signs in with **Microsoft
+Entra ID**: the Container App's managed identity in Azure, or `az login` on your computer. The
+identity needs the **Cognitive Services User** role (or **Cognitive Services OpenAI User** for
+Azure OpenAI only) on the resource. To use a key instead, set `AZURE_OPENAI_API_KEY` or
+`ANTHROPIC_FOUNDRY_API_KEY`.
+
+Notes:
+* With GPT-5.2, `NDA_EFFORT` sets the reasoning effort (`low`, `medium`, `high`, `xhigh`). Output
+  uses strict JSON-schema structured outputs, and requests are sent with `store=false`.
+* With Claude, the playbook is prompt-cached explicitly. On the Claude API (not Foundry) a
+  declined request is retried on another Claude model automatically.
 
 ## Deploy to Microsoft Teams
 
@@ -107,10 +116,13 @@ in **personal (1:1) chats**, so the app is scoped to personal chat.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_FOUNDRY_RESOURCE` | – | Foundry resource name. Setting it switches the bot to Microsoft Foundry |
-| `ANTHROPIC_FOUNDRY_API_KEY` | – | Foundry key. Leave unset to sign in with Entra ID (managed identity) |
-| `ANTHROPIC_API_KEY` | – | Claude API key, used only when Foundry isn't configured |
-| `NDA_MODEL` | `claude-opus-5-5` | Model used for the review; on Foundry, the deployment name |
+| `NDA_PROVIDER` | auto | `openai` or `anthropic` |
+| `AZURE_OPENAI_ENDPOINT` | – | Azure OpenAI / Foundry endpoint for GPT-5.2 |
+| `AZURE_OPENAI_API_KEY` | – | Azure OpenAI key. Leave unset to sign in with Entra ID |
+| `OPENAI_API_KEY` | – | Key for OpenAI directly |
+| `ANTHROPIC_FOUNDRY_RESOURCE` / `ANTHROPIC_FOUNDRY_API_KEY` | – | Claude in Microsoft Foundry |
+| `ANTHROPIC_API_KEY` | – | Claude API key |
+| `NDA_MODEL` | `gpt-5.2` / `claude-opus-5-5` | Model, or the deployment name on Azure |
 | `NDA_EFFORT` | `high` | Reasoning effort (`medium` is faster and cheaper; `xhigh` is more thorough) |
 | `REDLINE_AUTHOR` / `REDLINE_INITIALS` | `Unifi Legal` / `UL` | Name on the tracked changes and comments |
 | `ADD_COMMENTS` | `true` | Add playbook-rationale comments. Set to `false` before sending a redline straight to the counterparty, or delete the comments in Word. |

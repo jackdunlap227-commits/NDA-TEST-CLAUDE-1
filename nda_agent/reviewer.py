@@ -1,4 +1,8 @@
-"""Ask Claude to review an NDA against the playbook and return structured edits."""
+"""Review an NDA against the playbook with an LLM and return structured edits.
+
+The prompt, output schema and parsing are shared; ``NDAReviewer`` calls Claude and
+``nda_agent.openai_reviewer.OpenAIReviewer`` calls OpenAI models such as GPT-5.2.
+"""
 
 from __future__ import annotations
 
@@ -105,7 +109,34 @@ class ReviewError(RuntimeError):
     pass
 
 
+def build_user_message(numbered_nda: str, turn: str, instructions: str) -> str:
+    return (
+        f"Review turn: {turn.upper()}\n"
+        + (f"Additional instructions from the reviewer: {instructions}\n" if instructions else "")
+        + f"\n<nda>\n{numbered_nda}\n</nda>"
+    )
+
+
+def parse_review(text: str | None) -> ReviewOutput:
+    if not text:
+        raise ReviewError("The model returned no review.")
+    data = json.loads(text)
+    edits = [
+        Edit(
+            paragraph_id=e["paragraph_id"],
+            kind=e["kind"],
+            target_text=e["target_text"],
+            new_text=e["new_text"],
+            comment=f'{e["playbook_rule"]}: {e["comment"]}'.strip(": "),
+        )
+        for e in data["edits"]
+    ]
+    return ReviewOutput(summary=data["summary"], edits=edits, action_items=data["action_items"])
+
+
 class NDAReviewer:
+    """Claude reviewer (Claude API or Claude in Microsoft Foundry)."""
+
     def __init__(
         self,
         playbook_text: str,
@@ -127,11 +158,7 @@ class NDAReviewer:
         }]
 
     async def review(self, numbered_nda: str, turn: str = "first", instructions: str = "") -> ReviewOutput:
-        user = (
-            f"Review turn: {turn.upper()}\n"
-            + (f"Additional instructions from the reviewer: {instructions}\n" if instructions else "")
-            + f"\n<nda>\n{numbered_nda}\n</nda>"
-        )
+        user = build_user_message(numbered_nda, turn, instructions)
         extra = {}
         if self.server_fallback:
             # If a safety classifier declines, retry on the recommended model.
@@ -154,24 +181,5 @@ class NDAReviewer:
             raise ReviewError("The model declined to review this document.")
         if message.stop_reason == "max_tokens":
             raise ReviewError("The review was cut off (document too long for one pass).")
-        text = next((b.text for b in message.content if b.type == "text"), None)
-        if not text:
-            raise ReviewError("The model returned no review.")
-        data = json.loads(text)
         log.info("review usage: %s", message.usage)
-
-        edits = [
-            Edit(
-                paragraph_id=e["paragraph_id"],
-                kind=e["kind"],
-                target_text=e["target_text"],
-                new_text=e["new_text"],
-                comment=f'{e["playbook_rule"]}: {e["comment"]}'.strip(": "),
-            )
-            for e in data["edits"]
-        ]
-        return ReviewOutput(
-            summary=data["summary"],
-            edits=edits,
-            action_items=data["action_items"],
-        )
+        return parse_review(next((b.text for b in message.content if b.type == "text"), None))

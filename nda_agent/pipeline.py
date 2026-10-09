@@ -9,6 +9,7 @@ from .config import Settings
 from .llm import make_client, uses_foundry
 from .playbook import load_playbook
 from .redline import ApplyResult, RedlineDocument
+from .openai_reviewer import OpenAIReviewer
 from .reviewer import NDAReviewer, ReviewOutput
 
 log = logging.getLogger(__name__)
@@ -36,10 +37,17 @@ class ReviewedNDA:
 
 
 class NDAPipeline:
-    def __init__(self, settings: Settings, reviewer: NDAReviewer | None = None):
+    def __init__(self, settings: Settings, reviewer: NDAReviewer | OpenAIReviewer | None = None):
         self.settings = settings
-        self.reviewer = reviewer or NDAReviewer(
-            load_playbook(settings.playbook_path),
+        self.reviewer = reviewer or self._make_reviewer(settings)
+
+    @staticmethod
+    def _make_reviewer(settings: Settings) -> NDAReviewer | OpenAIReviewer:
+        playbook = load_playbook(settings.playbook_path)
+        if settings.provider == "openai":
+            return OpenAIReviewer(playbook, model=settings.model, effort=settings.effort)
+        return NDAReviewer(
+            playbook,
             model=settings.model,
             effort=settings.effort,
             client=make_client(),

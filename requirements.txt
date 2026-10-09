@@ -8,3 +8,4 @@ microsoft-agents-hosting-core==1.8.0
 microsoft-agents-hosting-aiohttp==1.8.0
 microsoft-agents-authentication-msal==1.8.0
 azure-identity==1.26.0
+openai==3.27.0
