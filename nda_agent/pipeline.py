@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 
 from .config import Settings
+from .llm import make_client, uses_foundry
 from .playbook import load_playbook
 from .redline import ApplyResult, RedlineDocument
 from .reviewer import NDAReviewer, ReviewOutput
@@ -38,7 +39,11 @@ class NDAPipeline:
     def __init__(self, settings: Settings, reviewer: NDAReviewer | None = None):
         self.settings = settings
         self.reviewer = reviewer or NDAReviewer(
-            load_playbook(settings.playbook_path), model=settings.model, effort=settings.effort
+            load_playbook(settings.playbook_path),
+            model=settings.model,
+            effort=settings.effort,
+            client=make_client(),
+            server_fallback=not uses_foundry(),
         )
 
     async def run(self, docx_bytes: bytes, turn: str = "first", instructions: str = "") -> ReviewedNDA:

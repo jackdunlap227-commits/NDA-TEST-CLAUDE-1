@@ -112,9 +112,12 @@ class NDAReviewer:
         model: str = "claude-opus-5-5",
         effort: str = "high",
         client: anthropic.AsyncAnthropic | None = None,
+        server_fallback: bool = True,
     ):
         self.client = client or anthropic.AsyncAnthropic()
         self.model = model
+        # Server-side refusal fallback exists on the Claude API but not on Microsoft Foundry.
+        self.server_fallback = server_fallback
         self.effort = effort
         # Frozen system prompt so the playbook is served from the prompt cache on every review.
         self.system = [{
@@ -129,6 +132,10 @@ class NDAReviewer:
             + (f"Additional instructions from the reviewer: {instructions}\n" if instructions else "")
             + f"\n<nda>\n{numbered_nda}\n</nda>"
         )
+        extra = {}
+        if self.server_fallback:
+            # If a safety classifier declines, retry on the recommended model.
+            extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
         async with self.client.beta.messages.stream(
             model=self.model,
             max_tokens=64000,
@@ -139,9 +146,7 @@ class NDAReviewer:
                 "effort": self.effort,
                 "format": {"type": "json_schema", "schema": REVIEW_SCHEMA},
             },
-            # Server-side fallback: if a safety classifier declines, retry on the recommended model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
+            **extra,
         ) as stream:
             message = await stream.get_final_message()
 

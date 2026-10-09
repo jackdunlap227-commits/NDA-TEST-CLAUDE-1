@@ -46,12 +46,29 @@ Teams ◀── summary + file consent card ──▶ upload the redline to the 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env            # set ANTHROPIC_API_KEY
+cp .env.example .env            # set ANTHROPIC_FOUNDRY_RESOURCE (and `az login`) or ANTHROPIC_API_KEY
 python samples/make_sample_nda.py
 python -m nda_agent.cli "samples/Sample Target NDA.docx"            # first turn
 python -m nda_agent.cli their-markup.docx --turn second --note "Target is Acme"
 pytest                                                              # tests run offline
 ```
+
+## Claude access: Microsoft Foundry or the Claude API
+
+The bot can call Claude in either of two ways. It picks one automatically from the settings.
+
+* **Microsoft Foundry** (billed through Azure): deploy Claude Opus 5.5 from the Foundry model
+  catalog, set `ANTHROPIC_FOUNDRY_RESOURCE` to the resource name, and set `NDA_MODEL` to the
+  deployment name. Then authenticate one of two ways:
+  * **No key (recommended):** the app signs in with Microsoft Entra ID. In Azure that's the
+    Container App's managed identity; on your computer it's `az login`. The identity needs the
+    **Cognitive Services User** (or **Foundry User**) role on the Foundry resource.
+  * **Key:** set `ANTHROPIC_FOUNDRY_API_KEY` to the key from the deployment's *Details* tab.
+* **Claude API:** set `ANTHROPIC_API_KEY` (from console.anthropic.com) and leave the Foundry
+  settings unset.
+
+Foundry doesn't support the server-side retry on another model when Claude declines a request,
+so the bot leaves that off on Foundry. Everything else behaves the same.
 
 ## Deploy to Microsoft Teams
 
@@ -90,8 +107,10 @@ in **personal (1:1) chats**, so the app is scoped to personal chat.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | – | Claude API key |
-| `NDA_MODEL` | `claude-opus-5-5` | Model used for the review |
+| `ANTHROPIC_FOUNDRY_RESOURCE` | – | Foundry resource name. Setting it switches the bot to Microsoft Foundry |
+| `ANTHROPIC_FOUNDRY_API_KEY` | – | Foundry key. Leave unset to sign in with Entra ID (managed identity) |
+| `ANTHROPIC_API_KEY` | – | Claude API key, used only when Foundry isn't configured |
+| `NDA_MODEL` | `claude-opus-5-5` | Model used for the review; on Foundry, the deployment name |
 | `NDA_EFFORT` | `high` | Reasoning effort (`medium` is faster and cheaper; `xhigh` is more thorough) |
 | `REDLINE_AUTHOR` / `REDLINE_INITIALS` | `Unifi Legal` / `UL` | Name on the tracked changes and comments |
 | `ADD_COMMENTS` | `true` | Add playbook-rationale comments. Set to `false` before sending a redline straight to the counterparty, or delete the comments in Word. |
